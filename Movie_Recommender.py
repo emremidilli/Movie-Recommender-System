@@ -132,8 +132,6 @@ class PreProcessing():
         return dfPreprocessed
     
     
-    
-    
 class DeepLearning():
     
     c_s_COL_NAME_MOVIE_ID_ENCODED = 'movie_id_encoded'
@@ -332,13 +330,18 @@ class DeepLearning():
         
         return dfRegressionMetrics
     
+    
+    def oGetEstimatorModel():
+        oRatingEstimatorModel = tf.keras.models.load_model(DeepLearning.gc_s_RATING_ESTIMATOR_MODEL_PATH)
+        return oRatingEstimatorModel
+    
 
 class Recommendation():
     
     c_i_NR_OF_MOST_SIMILAR_USERS = 3
     c_i_TOP_N_ITEMS_TO_RECOMMEND = 5
     
-    def __init__(self, p_iUserId, p_dfPreprocessed):
+    def __init__(self, p_iUserId, p_dfPreprocessed, p_oModelRatingEstimator = None):
         
         self.iUserId = p_iUserId
         self.dfPreprocessed = p_dfPreprocessed
@@ -348,9 +351,13 @@ class Recommendation():
         self.GetEncodedUserAndMovieIds()
 
         self.iUserIdEncoded = int(self.oUserIdEncoder.transform(np.array(self.iUserId).reshape(-1, 1))[0][0])
+        if p_oModelRatingEstimator == None:
+            self.oModelRatingEstimator = tf.keras.models.load_model(DeepLearning.gc_s_RATING_ESTIMATOR_MODEL_PATH)
+        else:
+            self.oModelRatingEstimator = p_oModelRatingEstimator
         
-        self.oModelRatingEstimator = tf.keras.models.load_model(DeepLearning.gc_s_RATING_ESTIMATOR_MODEL_PATH)
-
+        
+    
         
         
     def GetEncodersUserAndMovieIds(self):
@@ -457,7 +464,7 @@ class Recommendation():
         
         return dfSimilarUserRatings
         
-    def dfGetRecommendations(self, dfSimilarUserRatings):
+    def dfGetMoviesToRecommend(self, dfSimilarUserRatings):
         dfToRecommend = dfSimilarUserRatings.copy()
         dfToRecommend.sort_values(by = 'final_expected_score', ascending = False , inplace = True)
         dfToRecommend = dfToRecommend.head(Recommendation.c_i_TOP_N_ITEMS_TO_RECOMMEND)
@@ -487,9 +494,9 @@ class Recommendation():
         return dfUserHistory
 
 
-    def dfGetRecommendation(iUserID, dfPreprocessed):
+    def dfGetRecommendation(iUserID, dfPreprocessed, oRatingEstimatorModel):
 
-        oRecommender = Recommendation(iUserID, dfPreprocessed)
+        oRecommender = Recommendation(iUserID, dfPreprocessed, oRatingEstimatorModel)
         
         aMaxSimilarNUsers = oRecommender.aGetMostSimilarUsers()
             
@@ -498,7 +505,7 @@ class Recommendation():
         dfSimilarUserRatings = oRecommender.dfGetExpectedRatingsForSimilarUserRatings(dfSimilarUserRatings)
         dfSimilarUserRatings = oRecommender.dfCalculateFinalExpectedScores(dfSimilarUserRatings)
         
-        dfRecommendations = oRecommender.dfGetRecommendations(dfSimilarUserRatings)
+        dfRecommendations = oRecommender.dfGetMoviesToRecommend(dfSimilarUserRatings)
         
         dfUserHistory= oRecommender.dfGetUserHistory()
         

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from Movie_Recommender import PreProcessing, Recommendation
+from Movie_Recommender import PreProcessing, Recommendation, DeepLearning
 
 from threading import Thread
 
@@ -27,7 +27,7 @@ def SetPositionOfWindow(wnd):
     
 
     
-def ShowWelcomePage(thrtToWait):
+def ShowWelcomePage(thrtToWait,thrtToWait2 ):
     wndWelcome = tk.Tk()
     
     wndWelcome.overrideredirect(1)
@@ -42,7 +42,7 @@ def ShowWelcomePage(thrtToWait):
     lblWelcome.grid(row=0,column=0)
     
     # While the thread is alive
-    while thrtToWait.is_alive():
+    while thrtToWait.is_alive() or thrtToWait2.is_alive():
         # Update the root so it will keep responding
         wndWelcome.update()
    
@@ -53,9 +53,10 @@ def ShowWelcomePage(thrtToWait):
 
 
     
-def ShowMainPage(dfPreprocessed):
+def ShowMainPage(dfPreprocessed, oModelRatingEstimator):
     
     wndMain = tk.Tk()
+    wndMain.title('Movie Recommender System')
     
     SetPositionOfWindow(wndMain)
 
@@ -85,9 +86,9 @@ def ShowMainPage(dfPreprocessed):
     tvUserHistory.configure( yscrollcommand =scbUserHistoryVer.set) # assign the scrollbars to the Treeview Widget 
     tvUserHistory.configure( xscrollcommand=scbUserHistoryHor.set)
 
-    tvUserHistory.column("# 1",anchor='w', stretch='NO', width=200)
-    tvUserHistory.column("# 2",anchor='w', stretch='NO', width=200)
-    tvUserHistory.column("# 3",anchor='w', stretch='NO', width=100)
+    tvUserHistory.column("# 1",anchor='w', stretch='NO', width=225)
+    tvUserHistory.column("# 2",anchor='w', stretch='NO', width=225)
+    tvUserHistory.column("# 3",anchor='w', stretch='NO', width=50)
     
     tvUserHistory.heading(1, text='title')
     tvUserHistory.heading(2, text='genres')
@@ -115,8 +116,8 @@ def ShowMainPage(dfPreprocessed):
     tvRecommendation.configure( yscrollcommand =scbRecommendationVer.set) # assign the scrollbars to the Treeview Widget 
     tvRecommendation.configure( xscrollcommand=scbRecommendationHor.set)
 
-    tvRecommendation.column("# 1",anchor='w', stretch='NO', width=250)
-    tvRecommendation.column("# 2",anchor='w', stretch='NO', width=250)
+    tvRecommendation.column("# 1",anchor='w', stretch='NO', width=225)
+    tvRecommendation.column("# 2",anchor='w', stretch='NO', width=275)
     
     tvRecommendation.heading(1, text='title')
     tvRecommendation.heading(2, text='genres')
@@ -135,10 +136,10 @@ def ShowMainPage(dfPreprocessed):
             iUserId = int(txtUserId.get())
             
             if dfPreprocessed[dfPreprocessed['user_id'] == iUserId].shape[0] == 0:
-                messagebox.showwarning(title=None, message='This user id has never rated before')
+                messagebox.showwarning(title=None, message='This user has never rated before')
             else:
             
-                dfRecommendations, dfUserHistory = Recommendation.dfGetRecommendation(iUserId,dfPreprocessed)
+                dfRecommendations, dfUserHistory = Recommendation.dfGetRecommendation(iUserId,dfPreprocessed,oModelRatingEstimator )
                 
                 for ix, srs in dfUserHistory.iterrows():
                     tvUserHistory.insert('', tk.END, values=(srs['title'], srs['genres'], srs['rating'])) 
@@ -201,11 +202,15 @@ class ThreadWithReturnValue(Thread):
 thrtPreprocessing = ThreadWithReturnValue(target=PreProcessing.dfGetPreprocessedData)
 thrtPreprocessing.start()
 
-ShowWelcomePage(thrtPreprocessing)
+thrtLoadRatingEstimatorModel = ThreadWithReturnValue(target=DeepLearning.oGetEstimatorModel)
+thrtLoadRatingEstimatorModel.start()
+
+ShowWelcomePage(thrtPreprocessing, thrtLoadRatingEstimatorModel)
 
 dfPreprocessed = thrtPreprocessing.join()
+oModelRatingEstimator = thrtLoadRatingEstimatorModel.join()
 
-ShowMainPage(dfPreprocessed)
+ShowMainPage(dfPreprocessed, oModelRatingEstimator)
 
 
 
