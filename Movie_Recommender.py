@@ -22,6 +22,10 @@ import tensorflow as tf
 
 import os
 
+import keras_tuner
+
+from functools import partial
+
 
 
 gc_s_ENCODER_FOLDER_PATH = 'Encoders'
@@ -212,29 +216,31 @@ class DeepLearning():
         return iNrOfMovies, iNrOfUsers
     
     
-    def oBuildModel(iNrOfMovies, iNrOfUsers):
+    def oBuildModel(hp, iNrOfMovies, iNrOfUsers):
         
+        iEmbeddingSize = hp.Int('embedding_size', min_value=4, max_value=64, step=8)
+    
         aMovieInput = tf.keras.Input(
             shape = (len(DeepLearning.aColsMovie_X),),
             name = 'movie_input'
         )
-        
+    
         aMovieEmbedding = tf.keras.layers.Embedding(
             input_dim=iNrOfMovies, # size of vocabulary
-            output_dim=DeepLearning.c_i_EMBEDDING_SIZE, # length of sequence
+            output_dim=iEmbeddingSize, # length of sequence
             name = 'movie_embedding'
         )(aMovieInput)
-        
-        
-        
+    
+    
+    
         aUserInput = tf.keras.Input(
             shape = (len(DeepLearning.aColsUser_X),),
             name = 'user_input'
         )
-        
+    
         aUserEmbedding = tf.keras.layers.Embedding(
             input_dim=iNrOfUsers, # size of vocabulary
-            output_dim=DeepLearning.c_i_EMBEDDING_SIZE, # length of sequence
+            output_dim=iEmbeddingSize, # length of sequence
             name = 'user_embedding'
         )(aUserInput)
     
@@ -244,25 +250,59 @@ class DeepLearning():
             name = 'dot_product', 
             normalize = True,
             axes = 2)([aMovieEmbedding, aUserEmbedding])
-        
+    
         aOutput = tf.keras.layers.Flatten()(aOutput)
-        aOutput = tf.keras.layers.Dense(40, activation = 'ReLU')(aOutput) #, activity_regularizer = tf.keras.regularizers.L2(0.01)
-        aOutput = tf.keras.layers.Dropout(0.1)(aOutput)
-        aOutput = tf.keras.layers.Dense(20, activation = 'ReLU')(aOutput) #, activity_regularizer = tf.keras.regularizers.L2(0.01)
-        aOutput = tf.keras.layers.Dropout(0.1)(aOutput)
-        aOutput = tf.keras.layers.Dense(10, activation = 'ReLU')(aOutput) #, activity_regularizer = tf.keras.regularizers.L2(0.01)
-        aOutput = tf.keras.layers.Dropout(0.1)(aOutput)
+    
+        
+        for i in range(hp.Int('layers', min_value=0, max_value=3, step=1)):
+            aOutput = tf.keras.layers.Dense(
+                units = hp.Int('units', min_value=8, max_value=64, step=8), 
+                activity_regularizer = tf.keras.regularizers.L2(hp.Float('l2_regulizer_coeff', min_value=0, max_value=0.005)),  
+                activation = 'ReLU'
+            )(aOutput)
+    
+            if hp.Boolean("dropout"):
+                aOutput = tf.keras.layers.Dropout(hp.Float('dropout_rate', min_value=0, max_value=0.10))(aOutput)
+        
+        
         aOutput = tf.keras.layers.Dense(5, activation = 'sigmoid')(aOutput)
-        
-        
+    
         oModelRatingEstimator = tf.keras.Model(inputs=[aMovieInput, aUserInput], outputs=aOutput)
-
+    
         oOptimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
-        
+    
         oModelRatingEstimator.compile(optimizer=oOptimizer,loss= tf.keras.losses.BinaryCrossentropy())
-        
-        
+    
+    
         return oModelRatingEstimator
+
+
+
+    def oTuneHyperparameters(iNrOfMovies, iNrOfUsers, aMovie_X_Train, aUser_X_Train, a_y_Train,aMovie_X_Validation, aUser_X_Validation , a_y_Validation):
+
+        oTuner = keras_tuner.RandomSearch(
+            hypermodel=partial(DeepLearning.oBuildModel, iNrOfMovies=iNrOfMovies, iNrOfUsers=iNrOfUsers),
+            objective='val_loss',
+            max_trials=20,
+            executions_per_trial=2,
+            overwrite=True,
+            directory="Hyperparameter Optimization",
+            project_name="Random Search",
+        )
+        
+       
+        
+        
+        oTuner.search(
+            [aMovie_X_Train, aUser_X_Train], 
+            a_y_Train, 
+            epochs=10, 
+            batch_size=2**12, 
+            validation_data=([aMovie_X_Validation,aUser_X_Validation ], a_y_Validation)
+        )    
+        
+        return oTuner
+    
     
     
     

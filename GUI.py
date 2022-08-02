@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import  messagebox, ttk
 
 from Movie_Recommender import PreProcessing, Recommendation, DeepLearning
 
