@@ -1,0 +1,12 @@
+pandas
+numpy
+tensorflow
+sklearn
+seaborn
+matplotlib
+pickle
+os
+keras_tuner
+functools
+tkinter
+threading

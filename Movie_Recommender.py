@@ -147,15 +147,17 @@ class PreProcessing():
         dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'user_id', 'Ordinal')
         dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'gender', 'Label')
         dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'age', 'MinMax')
+        dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'year_of_release', 'MinMax')
 
         return dfPreprocessed
     
     
 class DeepLearning():
     
+    aColsMovie_X =  [ 'movie_id_encoded'] + SourceData.gc_a_GENRES + ['year_of_release_encoded'] + ['age_encoded', 'gender_encoded']
+    aColsUser_X =['user_id_encoded'] +SourceData.gc_a_GENRES + ['year_of_release_encoded'] + ['age_encoded', 'gender_encoded']
     
-    aColsMovie_X =  [ 'movie_id_encoded'] + SourceData.gc_a_GENRES + ['age_encoded', 'gender_encoded']
-    aColsUser_X =['user_id_encoded'] + SourceData.gc_a_GENRES + ['age_encoded', 'gender_encoded']
+    
     aCol_y = ['rating']
     
     
@@ -241,9 +243,9 @@ class DeepLearning():
             output_dim=iEmbeddingSize, # length of sequence
             name = 'movie_embedding'
         )(aMovieInput)
-    
-    
-    
+        
+        
+        
         aUserInput = tf.keras.Input(
             shape = (len(DeepLearning.aColsUser_X),),
             name = 'user_input'
@@ -263,7 +265,8 @@ class DeepLearning():
             axes = 2)([aMovieEmbedding, aUserEmbedding])
     
         aOutput = tf.keras.layers.Flatten()(aOutput)
-    
+        
+        
         
         for i in range(hp.Int('layers', min_value=0, max_value=5, step=1)):
             aOutput = tf.keras.layers.Dense(
@@ -271,16 +274,17 @@ class DeepLearning():
                 activity_regularizer = tf.keras.regularizers.L2(hp.Float('l2_regulizer_coeff', min_value=0, max_value=0.005)),  
                 activation = 'ReLU'
             )(aOutput)
-    
-            if hp.Boolean("dropout"):
-                aOutput = tf.keras.layers.Dropout(hp.Float('dropout_rate', min_value=0, max_value=0.10))(aOutput)
+            
+            
+            aOutput = tf.keras.layers.Dropout(hp.Float('dropout_rate', min_value=0, max_value=0.005))(aOutput)    
+        
         
         
         aOutput = tf.keras.layers.Dense(5, activation = 'sigmoid')(aOutput)
     
         oModelRatingEstimator = tf.keras.Model(inputs=[aMovieInput, aUserInput], outputs=aOutput)
     
-        oOptimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
+        oOptimizer = tf.keras.optimizers.Adam(learning_rate=hp.Float('learning_rate', min_value=1e-04 , max_value=1e-02 ))
     
         oModelRatingEstimator.compile(optimizer=oOptimizer,loss= tf.keras.losses.BinaryCrossentropy())
     
@@ -294,22 +298,28 @@ class DeepLearning():
         oTuner = keras_tuner.RandomSearch(
             hypermodel=partial(DeepLearning.oBuildModel, iNrOfMovies=iNrOfMovies, iNrOfUsers=iNrOfUsers),
             objective='val_loss',
-            max_trials=3,
-            executions_per_trial=1,
+            max_trials=20,
+            executions_per_trial=2,
             overwrite=True,
             directory="Hyperparameter Optimization",
             project_name="Random Search",
         )
-        
+
+        oEarlyStop = tf.keras.callbacks.EarlyStopping(
+            monitor = 'val_loss', 
+            mode = 'min', 
+            verbose = 0 , 
+            patience = 5, 
+            restore_best_weights = True)        
        
-        
-        
+
         oTuner.search(
             [aMovie_X_Train, aUser_X_Train], 
             a_y_Train, 
-            epochs=10, 
+            epochs=1000, 
             batch_size=2**12, 
-            validation_data=([aMovie_X_Validation,aUser_X_Validation ], a_y_Validation)
+            validation_data=([aMovie_X_Validation,aUser_X_Validation ], a_y_Validation),
+            callbacks=[oEarlyStop]
         )    
         
         return oTuner
@@ -322,7 +332,7 @@ class DeepLearning():
             monitor = 'val_loss', 
             mode = 'min', 
             verbose = 0 , 
-            patience = 10, 
+            patience = 5, 
             restore_best_weights = True)
         
         oModelRatingEstimator.fit(
