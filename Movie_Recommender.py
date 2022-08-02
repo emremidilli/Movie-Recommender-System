@@ -111,7 +111,44 @@ class PreProcessing():
         pickle.dump(oEncoder, open(sFilePathToSave, 'wb'))
         
         return dfToEncode
+    
+    
+    
+    def dfGetPreprocessedData():
+        dfUsers = SourceData.dfGetUsers()
+        dfMovies = SourceData.dfGetMovies()
+        dfRatings = SourceData.dfGetRatings()
+        
+        dfMovies = PreProcessing.dfExtractYearOfReleaseOfMovies(dfMovies)
+        
+        dfMovies = PreProcessing.dfTransformGenresToOneHot(dfMovies)
+        
+        dfPreprocessed = PreProcessing.dfMergeRatingsMoviesUsers(dfRatings, dfMovies, dfUsers)
+        
+        dfPreprocessed = PreProcessing.oEncodeFieldWithOrdinalEncoder(dfPreprocessed, 'movie_id')
+        dfPreprocessed = PreProcessing.oEncodeFieldWithOrdinalEncoder(dfPreprocessed, 'user_id')
 
+
+        return dfPreprocessed
+    
+    
+    
+    
+class DeepLearning():
+    
+    c_s_COL_NAME_MOVIE_ID_ENCODED = 'movie_id_encoded'
+    c_s_COL_NAME_USER_ID_ENCODED = 'user_id_encoded'
+    
+    
+    aColsMovie_X =  [ c_s_COL_NAME_MOVIE_ID_ENCODED] + SourceData.gc_a_GENRES
+    aColsUser_X =[c_s_COL_NAME_USER_ID_ENCODED] + SourceData.gc_a_GENRES
+    aCol_y = ['rating']
+    
+    
+    gc_s_RATING_ENCODER_NAME = os.path.join(gc_s_ENCODER_FOLDER_PATH ,'rating_encoder.sav')
+    gc_s_RATING_ESTIMATOR_MODEL_PATH = os.path.join(gc_s_MODEL_FOLDER_PATH , "rating_estimator_model")
+    
+    c_i_EMBEDDING_SIZE = 5
     
     def ixSplitTrainValidationTest(dfToSplit):
         
@@ -130,24 +167,7 @@ class PreProcessing():
             shuffle=True)
     
         
-        return ixTrain, ixValidation, ixTest        
-    
-    
-class DeepLearning():
-    
-    c_s_COL_NAME_MOVIE_ID_ENCODED = 'movie_id_encoded'
-    c_s_COL_NAME_USER_ID_ENCODED = 'user_id_encoded'
-    
-    
-    aColsMovie_X =  [ c_s_COL_NAME_MOVIE_ID_ENCODED] + SourceData.gc_a_GENRES
-    aColsUser_X =[c_s_COL_NAME_USER_ID_ENCODED] + SourceData.gc_a_GENRES
-    aCol_y = ['rating']
-    
-    
-    gc_s_RATING_ENCODER_NAME = os.path.join(gc_s_ENCODER_FOLDER_PATH ,'rating_encoder.sav')
-    gc_s_RATING_ESTIMATOR_MODEL_PATH = os.path.join(gc_s_MODEL_FOLDER_PATH , "rating_estimator_model")
-    
-    c_i_EMBEDDING_SIZE = 5
+        return ixTrain, ixValidation, ixTest
     
     def aBuildInputDatasets(df,ixTrain, ixValidation, ixTest):
         aMovie_X_Train = df.loc[ixTrain , DeepLearning.aColsMovie_X].values
@@ -409,19 +429,19 @@ class Recommendation():
     
     def dfGetExpectedRatingsForSimilarUserRatings(self, dfSimilarUserRatings):
         
-        for ix, srs in dfSimilarUserRatings.iterrows():
-            
-            iMovieIdEncoded = srs['movie_id_encoded']
-                        
-            aMovieGenres = self.dfPreprocessed[self.dfPreprocessed['movie_id_encoded'] == iMovieIdEncoded].loc[:, SourceData.gc_a_GENRES ].iloc[0].values
-            
+        
+        dfFiltered = self.dfPreprocessed[self.dfPreprocessed['movie_id_encoded'].isin(dfSimilarUserRatings['movie_id_encoded'].values)].drop_duplicates(subset = ['movie_id_encoded'])
+        dfFiltered.sort_values(by = 'movie_id_encoded', inplace = True)
+        dfSimilarUserRatings.sort_values(by = 'movie_id_encoded', inplace = True)
+        
+                                                                                                                                                        
+        a_inference_movie_X = dfFiltered.loc[ : , DeepLearning.aColsMovie_X].values
+        a_inference_user_X= dfFiltered.loc[ : , DeepLearning.aColsUser_X].values
+        
+        
 
-            a_inference_movie_X = np.array([iMovieIdEncoded] + list(aMovieGenres)).reshape(1, -1)
-            a_inference_user_X= np.array([self.iUserIdEncoded] + list(aMovieGenres)).reshape(1, -1)
-            
-
-            iExpectedRating =  DeepLearning.aPredict(a_inference_movie_X, a_inference_user_X, self.oModelRatingEstimator )[0][0]
-            dfSimilarUserRatings.loc[ix, 'deep_learning_expectation'] = iExpectedRating
+        aExpectedRatings =  DeepLearning.aPredict(a_inference_movie_X, a_inference_user_X, self.oModelRatingEstimator )
+        dfSimilarUserRatings.loc[:, 'deep_learning_expectation'] = aExpectedRatings
             
         
         return dfSimilarUserRatings
@@ -452,7 +472,6 @@ class Recommendation():
         dfToRecommend = dfToRecommend[['title', 'genres', 'expected_rating']]
         
         
-        
         return dfToRecommend
         
         
@@ -468,37 +487,20 @@ class Recommendation():
         return dfUserHistory
 
 
+    def dfGetRecommendation(iUserID, dfPreprocessed):
 
-# if __name__ == '__main__':
-    
-#     dfUsers = SourceData.dfGetUsers()
-#     dfMovies = SourceData.dfGetMovies()
-#     dfRatings = SourceData.dfGetRatings()
-    
-#     dfMovies = PreProcessing.dfExtractYearOfReleaseOfMovies(dfMovies)
-    
-#     dfMovies = PreProcessing.dfTransformGenresToOneHot(dfMovies)
-    
-#     dfPreprocessed = PreProcessing.dfMergeRatingsMoviesUsers(dfRatings, dfMovies, dfUsers)
-    
-#     dfPreprocessed = PreProcessing.oEncodeFieldWithOrdinalEncoder(dfPreprocessed, 'movie_id')
-#     dfPreprocessed = PreProcessing.oEncodeFieldWithOrdinalEncoder(dfPreprocessed, 'user_id')
-    
-#     ixTrain, ixValidation , ixTest = PreProcessing.ixSplitTrainValidationTest(dfPreprocessed)
-    
-    
-#     iUserID = 205
-
-#     oRecommender = Recommendation(iUserID, dfPreprocessed)
-    
-#     aMaxSimilarNUsers = oRecommender.aGetMostSimilarUsers()
+        oRecommender = Recommendation(iUserID, dfPreprocessed)
         
-#     dfSimilarUserRatings = oRecommender.dfGetMovieIdsRatedByMostSimilarUsers(aMaxSimilarNUsers)
-#     dfSimilarUserRatings = oRecommender.dfExcludeMovieIdsThatAreAlreadyRatedByUser(dfSimilarUserRatings)
-#     dfSimilarUserRatings = oRecommender.dfGetExpectedRatingsForSimilarUserRatings(dfSimilarUserRatings)
-#     dfSimilarUserRatings = oRecommender.dfCalculateFinalExpectedScores(dfSimilarUserRatings)
-    
-#     dfRecommendations = oRecommender.dfGetRecommendations(dfSimilarUserRatings)
-    
-#     dfUserHistory= oRecommender.dfGetUserHistory()
+        aMaxSimilarNUsers = oRecommender.aGetMostSimilarUsers()
+            
+        dfSimilarUserRatings = oRecommender.dfGetMovieIdsRatedByMostSimilarUsers(aMaxSimilarNUsers)
+        dfSimilarUserRatings = oRecommender.dfExcludeMovieIdsThatAreAlreadyRatedByUser(dfSimilarUserRatings)
+        dfSimilarUserRatings = oRecommender.dfGetExpectedRatingsForSimilarUserRatings(dfSimilarUserRatings)
+        dfSimilarUserRatings = oRecommender.dfCalculateFinalExpectedScores(dfSimilarUserRatings)
+        
+        dfRecommendations = oRecommender.dfGetRecommendations(dfSimilarUserRatings)
+        
+        dfUserHistory= oRecommender.dfGetUserHistory()
+        
+        return dfRecommendations, dfUserHistory
     
