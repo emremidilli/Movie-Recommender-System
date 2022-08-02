@@ -9,6 +9,7 @@ import pandas as pd
 
 import numpy as np
 
+from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OrdinalEncoder
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import MinMaxScaler
@@ -96,6 +97,7 @@ class PreProcessing():
             
         return dfToTransform
         
+    
         
         
     def dfMergeRatingsMoviesUsers(p_dfRatings, p_dfMovies, p_dfUsers):
@@ -106,8 +108,16 @@ class PreProcessing():
     
     
     
-    def oEncodeFieldWithOrdinalEncoder(dfToEncode, sFieldToEncode):
-        oEncoder = OrdinalEncoder()
+    
+    
+    def oEncodeField(dfToEncode, sFieldToEncode, sEncoderType):
+        if sEncoderType == 'Ordinal':
+            oEncoder = OrdinalEncoder()
+        elif sEncoderType == 'Label':
+            oEncoder = LabelEncoder()
+        elif sEncoderType == 'MinMax':
+            oEncoder = MinMaxScaler()
+            
         dfToEncode['{}_encoded'.format(sFieldToEncode)] =  oEncoder.fit_transform(dfToEncode[sFieldToEncode].values.reshape(-1 , 1))
         
         sFilePathToSave = os.path.join(gc_s_ENCODER_FOLDER_PATH ,'{}_encoder.sav'.format(sFieldToEncode))
@@ -115,6 +125,10 @@ class PreProcessing():
         pickle.dump(oEncoder, open(sFilePathToSave, 'wb'))
         
         return dfToEncode
+    
+    
+
+    
     
     
     
@@ -129,28 +143,25 @@ class PreProcessing():
         
         dfPreprocessed = PreProcessing.dfMergeRatingsMoviesUsers(dfRatings, dfMovies, dfUsers)
         
-        dfPreprocessed = PreProcessing.oEncodeFieldWithOrdinalEncoder(dfPreprocessed, 'movie_id')
-        dfPreprocessed = PreProcessing.oEncodeFieldWithOrdinalEncoder(dfPreprocessed, 'user_id')
-
+        dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'movie_id', 'Ordinal')
+        dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'user_id', 'Ordinal')
+        dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'gender', 'Label')
+        dfPreprocessed = PreProcessing.oEncodeField(dfPreprocessed, 'age', 'MinMax')
 
         return dfPreprocessed
     
     
 class DeepLearning():
     
-    c_s_COL_NAME_MOVIE_ID_ENCODED = 'movie_id_encoded'
-    c_s_COL_NAME_USER_ID_ENCODED = 'user_id_encoded'
     
-    
-    aColsMovie_X =  [ c_s_COL_NAME_MOVIE_ID_ENCODED] + SourceData.gc_a_GENRES
-    aColsUser_X =[c_s_COL_NAME_USER_ID_ENCODED] + SourceData.gc_a_GENRES
+    aColsMovie_X =  [ 'movie_id_encoded'] + SourceData.gc_a_GENRES + ['age_encoded', 'gender_encoded']
+    aColsUser_X =['user_id_encoded'] + SourceData.gc_a_GENRES + ['age_encoded', 'gender_encoded']
     aCol_y = ['rating']
     
     
     gc_s_RATING_ENCODER_NAME = os.path.join(gc_s_ENCODER_FOLDER_PATH ,'rating_encoder.sav')
     gc_s_RATING_ESTIMATOR_MODEL_PATH = os.path.join(gc_s_MODEL_FOLDER_PATH , "rating_estimator_model")
     
-    c_i_EMBEDDING_SIZE = 5
     
     def ixSplitTrainValidationTest(dfToSplit):
         
@@ -209,8 +220,8 @@ class DeepLearning():
     
     
     def iGetNrOfUniqueMoviesUsers(df):
-        iNrOfMovies = df[DeepLearning.c_s_COL_NAME_MOVIE_ID_ENCODED].nunique()
-        iNrOfUsers = df[DeepLearning.c_s_COL_NAME_USER_ID_ENCODED].nunique()
+        iNrOfMovies = df['movie_id_encoded'].nunique()
+        iNrOfUsers = df['user_id_encoded'].nunique()
         
         
         return iNrOfMovies, iNrOfUsers
@@ -254,7 +265,7 @@ class DeepLearning():
         aOutput = tf.keras.layers.Flatten()(aOutput)
     
         
-        for i in range(hp.Int('layers', min_value=0, max_value=3, step=1)):
+        for i in range(hp.Int('layers', min_value=0, max_value=5, step=1)):
             aOutput = tf.keras.layers.Dense(
                 units = hp.Int('units', min_value=8, max_value=64, step=8), 
                 activity_regularizer = tf.keras.regularizers.L2(hp.Float('l2_regulizer_coeff', min_value=0, max_value=0.005)),  
@@ -283,8 +294,8 @@ class DeepLearning():
         oTuner = keras_tuner.RandomSearch(
             hypermodel=partial(DeepLearning.oBuildModel, iNrOfMovies=iNrOfMovies, iNrOfUsers=iNrOfUsers),
             objective='val_loss',
-            max_trials=20,
-            executions_per_trial=2,
+            max_trials=3,
+            executions_per_trial=1,
             overwrite=True,
             directory="Hyperparameter Optimization",
             project_name="Random Search",
